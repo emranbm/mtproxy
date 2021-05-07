@@ -1,0 +1,39 @@
+---
+name: "Master Workflow"
+env:
+  DOCKER_USER: emranbm
+  IMAGE_NAME: emranbm/mtproxy:latest
+  CONTAINER_NAME: mtproxy-container
+on:
+  push:
+    branches:
+      - master
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Login to Docker Hub
+        run: echo ${{ secrets.DOCKER_HUB_TOKEN }} | docker login -u $DOCKER_USER --password-stdin
+      - name: Build Image
+        run: docker build -t $IMAGE_NAME .
+      - name: Push Image
+        run: docker push $IMAGE_NAME
+  deploy:
+    runs-on: ubuntu-20.04
+    needs: build
+    steps:
+      - name: Pull image
+        run: sshpass -p ${{ secrets.HOST_PASS }} ssh -o StrictHostKeyChecking=no ${{ secrets.HOST_USER }}@${{ secrets.HOST_ADDRESS }}
+          docker pull $IMAGE_NAME
+      - name: Stop previous container if exists
+        run: sshpass -p ${{ secrets.HOST_PASS }} ssh -o StrictHostKeyChecking=no ${{ secrets.HOST_USER }}@${{ secrets.HOST_ADDRESS }}
+          bash -c "docker stop $CONTAINER_NAME || true"
+      - name: Start fresh container
+        run: sshpass -p ${{ secrets.HOST_PASS }} ssh -o StrictHostKeyChecking=no ${{ secrets.HOST_USER }}@${{ secrets.HOST_ADDRESS }}
+          docker run -d --rm
+          -p 6969:6969
+          -p 8888:8888
+          --env SECRET="${{ secrets.MTPROXY_SECRET }}"
+          --name $CONTAINER_NAME
+          $IMAGE_NAME
